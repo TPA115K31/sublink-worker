@@ -16,6 +16,9 @@ export function parseVless(url) {
 
     // `udp` is a Clash-only flag; ClashConfigBuilder reads it, SingboxConfigBuilder strips it.
     const udp = params.udp !== undefined ? parseBool(params.udp) : undefined;
+    const supportX25519Mlkem768 = tls.reality?.public_key
+        ? parseBool(params['support-x25519mlkem768'])
+        : undefined;
 
     return {
         type: 'vless',
@@ -27,6 +30,7 @@ export function parseVless(url) {
         tls,
         transport,
         flow: params.flow ?? undefined,
-        ...(udp !== undefined ? { udp } : {})
+        ...(udp !== undefined ? { udp } : {}),
+        ...(supportX25519Mlkem768 !== undefined ? { reality_support_x25519mlkem768: supportX25519Mlkem768 } : {})
     };
 }

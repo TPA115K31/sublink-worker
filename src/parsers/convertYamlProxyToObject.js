@@ -71,6 +71,7 @@ export function convertYamlProxyToObject(p) {
         case 'vless': {
             const tlsEnabled = !!p.tls;
             const reality = p['reality-opts'];
+            const supportX25519Mlkem768 = reality?.['support-x25519mlkem768'];
             const tls = tlsEnabled
                 ? {
                     enabled: true,
@@ -120,7 +121,10 @@ export function convertYamlProxyToObject(p) {
                 flow: p.flow ?? undefined,
                 udp: typeof p.udp !== 'undefined' ? !!p.udp : undefined,
                 packet_encoding: p['packet-encoding'],
-                alpn: toArray(p.alpn)
+                alpn: toArray(p.alpn),
+                ...(tlsEnabled && reality?.['public-key'] && typeof supportX25519Mlkem768 === 'boolean'
+                    ? { reality_support_x25519mlkem768: supportX25519Mlkem768 }
+                    : {})
             };
         }
         case 'trojan': {

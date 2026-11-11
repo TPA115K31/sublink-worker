@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+import yaml from 'js-yaml';
 import { createApp } from '../src/app/createApp.jsx';
 import { MemoryKVAdapter } from '../src/adapters/kv/memoryKv.js';
+
+const realityLink = 'vless://00000000-0000-4000-8000-000000000001@example.com:443?security=reality&type=tcp&sni=example.com&pbk=test-key&sid=abcd';
 
 const createTestApp = (overrides = {}) => {
     const runtime = {
@@ -88,6 +91,57 @@ describe('Worker', () => {
         expect(res.headers.get('content-type')).toContain('text/yaml');
         const text = await res.text();
         expect(text).toContain('proxies:');
+    });
+
+    it.each([
+        ['&support-x25519mlkem768=true', true],
+        ['&support-x25519mlkem768=false', false],
+        ['', undefined],
+        ['&support-x25519mlkem768=invalid', undefined],
+    ])('GET /clash handles the REALITY VLESS hint %j', async (query, expected) => {
+        const config = btoa(`${realityLink}${query}#Reality`);
+        const res = await createTestApp().request(`http://localhost/clash?config=${encodeURIComponent(config)}`);
+
+        expect(res.status).toBe(200);
+        const result = yaml.load(await res.text());
+        expect(result.mode).toBe('rule');
+        expect(result.proxies[0]['reality-opts']).toEqual({
+            'public-key': 'test-key',
+            'short-id': 'abcd',
+            ...(expected !== undefined ? { 'support-x25519mlkem768': expected } : {}),
+        });
+    });
+
+    it('GET /clash preserves the REALITY hint when rebuilding Clash YAML', async () => {
+        const config = `
+proxies:
+  - name: Reality
+    type: vless
+    server: example.com
+    port: 443
+    uuid: 00000000-0000-4000-8000-000000000001
+    tls: true
+    reality-opts:
+      public-key: test-key
+      short-id: abcd
+      support-x25519mlkem768: true
+`;
+        const res = await createTestApp().request(`http://localhost/clash?config=${encodeURIComponent(config)}`);
+
+        expect(res.status).toBe(200);
+        const result = yaml.load(await res.text());
+        expect(result.proxies[0]['reality-opts']['support-x25519mlkem768']).toBe(true);
+    });
+
+    it('GET /singbox omits the Mihomo REALITY hint', async () => {
+        const config = `${realityLink}&support-x25519mlkem768=true#Reality`;
+        const res = await createTestApp().request(`http://localhost/singbox?config=${encodeURIComponent(config)}`);
+
+        expect(res.status).toBe(200);
+        const result = await res.json();
+        const outbound = result.outbounds.find(proxy => proxy.type === 'vless');
+        expect(outbound.tls.reality).toEqual({ enabled: true, public_key: 'test-key', short_id: 'abcd' });
+        expect(outbound).not.toHaveProperty('reality_support_x25519mlkem768');
     });
 
     it('GET /clash rejects empty url-test proxy groups with a diagnostic error', async () => {
